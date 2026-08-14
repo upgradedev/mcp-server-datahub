@@ -1159,8 +1159,7 @@ async def test_get_lineage_paths_between_upstream(mcp_client: Client) -> None:
 
 
 _ASPECT_HISTORY_URN = (
-    "urn:li:dataset:(urn:li:dataPlatform:hive,"
-    "mcp_server_aspect_history_fixture,PROD)"
+    "urn:li:dataset:(urn:li:dataPlatform:hive,mcp_server_aspect_history_fixture,PROD)"
 )
 _ASPECT_HISTORY_WRITES = 25
 
@@ -1226,9 +1225,11 @@ async def test_get_aspect_history_against_a_multi_version_aspect(
 
     assert item["error"] is None
     current_version = int(item["current"]["systemMetadata"]["version"])
-    assert current_version == _ASPECT_HISTORY_WRITES
+    # The suite runs twice against one quickstart, so the aspect may already
+    # carry versions from an earlier pass. Assert relationships, not a count.
+    assert current_version >= _ASPECT_HISTORY_WRITES
 
-    assert item["history"], "a 25-times-written aspect must expose history"
+    assert item["history"], "a repeatedly written aspect must expose history"
     assert item["history"][0]["version"] == current_version - 1
     assert item["history"][0]["value"] != item["current"]["value"]
     assert item["page"]["fromVersion"] == current_version - 1
