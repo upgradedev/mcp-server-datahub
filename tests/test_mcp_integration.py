@@ -21,6 +21,10 @@ from mcp.types import TextContent
 from loguru import logger
 from mcp_server_datahub._telemetry import TelemetryMiddleware
 from mcp_server_datahub.mcp_server import mcp, register_all_tools, with_datahub_client
+from mcp_server_datahub.version_requirements import (
+    TOOL_VERSION_REQUIREMENTS,
+    _is_tool_compatible,
+)
 
 # Register tools with OSS-compatible descriptions for testing
 register_all_tools(is_oss=True)
@@ -1177,6 +1181,29 @@ def _require_disposable_instance() -> None:
         pytest.skip("Write-based test runs only against a local quickstart")
 
 
+def _require_aspect_history_supported(client: DataHubClient) -> None:
+    """Skip when the live server predates get_aspect_history's version floor.
+
+    The tool is gated with @min_version because it depends on per-aspect
+    If-Version-Match on the v3 batchGet endpoint. The CI matrix stands up OSS
+    quickstarts below that floor, and call_tool -- unlike list_tools -- is not
+    version-filtered, so without this guard the tool would be exercised against a
+    server that cannot serve the seam. Reusing the tool's own requirement and the
+    production compatibility check keeps the skip in lockstep with the gate.
+    """
+    req = TOOL_VERSION_REQUIREMENTS.get("get_aspect_history")
+    config = client._graph.server_config
+    is_cloud = config.is_datahub_cloud
+    server_version = config.parsed_version or (0, 0, 0, 0)
+    if req is not None and not _is_tool_compatible(req, is_cloud, server_version):
+        deployment = "cloud" if is_cloud else "oss"
+        minimum = req.cloud_min if is_cloud else req.oss_min
+        pytest.skip(
+            f"get_aspect_history requires {deployment} >= {minimum}; "
+            f"server is {server_version}"
+        )
+
+
 @pytest.mark.anyio
 async def test_get_aspect_history_against_a_multi_version_aspect(
     mcp_client: Client,
@@ -1191,6 +1218,7 @@ async def test_get_aspect_history_against_a_multi_version_aspect(
     """
     _require_disposable_instance()
     client = DataHubClient.from_env()
+    _require_aspect_history_supported(client)
     graph = client._graph
 
     for i in range(1, _ASPECT_HISTORY_WRITES + 1):
